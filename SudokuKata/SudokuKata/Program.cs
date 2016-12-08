@@ -53,11 +53,11 @@ namespace SudokuKata
             {
                 if (command == "expand")
                 {
-                    int[] state = new int[9 * 9];
+                    int[] currentState = new int[9 * 9];
 
                     if (stateStack.Count > 0)
                     {
-                        Array.Copy(stateStack.Peek(), state, state.Length);
+                        Array.Copy(stateStack.Peek(), currentState, currentState.Length);
                     }
 
                     int bestRow = -1;
@@ -67,8 +67,8 @@ namespace SudokuKata
                     int bestRandomValue = -1;
                     bool containsUnsolvableCells = false;
 
-                    for (int index = 0; index < state.Length; index++)
-                        if (state[index] == 0)
+                    for (int index = 0; index < currentState.Length; index++)
+                        if (currentState[index] == 0)
                         {
 
                             int row = index / 9;
@@ -80,15 +80,15 @@ namespace SudokuKata
 
                             for (int i = 0; i < 9; i++)
                             {
-                                int rowDigit = state[9 * i + col];
+                                int rowDigit = currentState[9 * i + col];
                                 if (rowDigit > 0)
                                     isDigitUsed[rowDigit - 1] = true;
 
-                                int colDigit = state[9 * row + i];
+                                int colDigit = currentState[9 * row + i];
                                 if (colDigit > 0)
                                     isDigitUsed[colDigit - 1] = true;
 
-                                int blockDigit = state[(blockRow*3 + i / 3) * 9 + (blockCol*3 + i % 3)];
+                                int blockDigit = currentState[(blockRow * 3 + i / 3) * 9 + (blockCol * 3 + i % 3)];
                                 if (blockDigit > 0)
                                     isDigitUsed[blockDigit - 1] = true;
                             } // for (i = 0..8)
@@ -104,7 +104,7 @@ namespace SudokuKata
                             int randomValue = rng.Next();
 
                             if (bestCandidatesCount < 0 ||
-                                candidatesCount < bestCandidatesCount || 
+                                candidatesCount < bestCandidatesCount ||
                                 (candidatesCount == bestCandidatesCount && randomValue < bestRandomValue))
                             {
                                 bestRow = row;
@@ -118,7 +118,7 @@ namespace SudokuKata
 
                     if (!containsUnsolvableCells)
                     {
-                        stateStack.Push(state);
+                        stateStack.Push(currentState);
                         rowIndexStack.Push(bestRow);
                         colIndexStack.Push(bestCol);
                         usedDigitsStack.Push(bestUsedDigits);
@@ -150,7 +150,7 @@ namespace SudokuKata
                     int colToWrite = colToMove + colToMove / 3 + 1;
 
                     bool[] usedDigits = usedDigitsStack.Peek();
-                    int[] state = stateStack.Peek();
+                    int[] currentState = stateStack.Peek();
                     int currentStateIndex = 9 * rowToMove + colToMove;
 
                     int movedToDigit = digitToMove + 1;
@@ -160,7 +160,7 @@ namespace SudokuKata
                     if (digitToMove > 0)
                     {
                         usedDigits[digitToMove - 1] = false;
-                        state[currentStateIndex] = 0;
+                        currentState[currentStateIndex] = 0;
                         board[rowToWrite][colToWrite] = '.';
                     }
 
@@ -168,7 +168,7 @@ namespace SudokuKata
                     {
                         lastDigitStack.Push(movedToDigit);
                         usedDigits[movedToDigit - 1] = true;
-                        state[currentStateIndex] = movedToDigit;
+                        currentState[currentStateIndex] = movedToDigit;
                         board[rowToWrite][colToWrite] = (char)('0' + movedToDigit);
 
                         // Next possible digit was found at current position
@@ -194,7 +194,8 @@ namespace SudokuKata
             int remainingDigits = 33;
             int maxRemovedPerBlock = 6;
             int[,] removedPerBlock = new int[3, 3];
-            int[] positions = Enumerable.Range(0, 9*9).ToArray();
+            int[] positions = Enumerable.Range(0, 9 * 9).ToArray();
+            int[] state = stateStack.Peek();
 
             int removedPos = 0;
             while (removedPos < 9 * 9 - remainingDigits)
@@ -205,8 +206,8 @@ namespace SudokuKata
                 int row = positions[indexToPick] / 9;
                 int col = positions[indexToPick] % 9;
 
-                int blockRowToRemove = row/3;
-                int blockColToRemove = col/3;
+                int blockRowToRemove = row / 3;
+                int blockColToRemove = col / 3;
 
                 if (removedPerBlock[blockRowToRemove, blockColToRemove] >= maxRemovedPerBlock)
                     continue;
@@ -217,16 +218,108 @@ namespace SudokuKata
                 positions[removedPos] = positions[indexToPick];
                 positions[indexToPick] = temp;
 
-                int rowToWrite = row + row/3 + 1;
-                int colToWrite = col + col/3 + 1;
+                int rowToWrite = row + row / 3 + 1;
+                int colToWrite = col + col / 3 + 1;
 
                 board[rowToWrite][colToWrite] = '.';
+
+                int stateIndex = 9 * row + col;
+                state[stateIndex] = 0;
+
                 removedPos += 1;
             }
 
             Console.WriteLine();
             Console.WriteLine("Starting look of the board to solve:");
             Console.WriteLine(string.Join("\n", board.Select(s => new string(s)).ToArray()));
+
+            Console.WriteLine();
+            Console.WriteLine(new string('=', 80));
+            Console.WriteLine();
+
+            Dictionary<int, int> maskToOnesCount = new Dictionary<int, int>();
+            maskToOnesCount[0] = 0;
+            for (int i = 1; i < (1 << 9); i++)
+            {
+                int smaller = i >> 1;
+                int increment = i & 1;
+                maskToOnesCount[i] = maskToOnesCount[smaller] + increment;
+            }
+
+            Dictionary<int, int> singleBitToIndex = new Dictionary<int, int>();
+            for (int i = 0; i < 9; i++)
+                singleBitToIndex[1 << i] = i;
+
+            int allOnes = (1 << 9) - 1;
+
+            bool changeMade = true;
+
+            while (changeMade)
+            {
+                changeMade = false;
+
+                int[] candidateMasks = new int[state.Length];
+
+                for (int i = 0; i < state.Length; i++)
+                    if (state[i] == 0)
+                    {
+
+                        int row = i/9;
+                        int col = i%9;
+                        int blockRow = row/3;
+                        int blockCol = col/3;
+
+                        int colidingNumbers = 0;
+                        for (int j = 0; j < 9; j++)
+                        {
+                            int rowSiblingIndex = 9 * row + j;
+                            int colSiblingIndex = 9*j + col;
+                            int blockSiblingIndex = 9*(blockRow*3 + j/3) + blockCol*3 + j%3;
+
+                            int rowSiblingMask = 1 << (state[rowSiblingIndex] - 1);
+                            int colSiblingMask = 1 << (state[colSiblingIndex] - 1);
+                            int blockSiblingMask = 1 << (state[blockSiblingIndex] - 1);
+
+                            colidingNumbers = colidingNumbers | rowSiblingMask | colSiblingMask | blockSiblingMask;
+                        }
+
+                        candidateMasks[i] = allOnes & ~colidingNumbers;
+                    }
+
+                int[] singleCandidateIndices =
+                    candidateMasks
+                        .Select((mask, index) => new
+                        {
+                            CandidatesCount = maskToOnesCount[mask],
+                            Index = index
+                        })
+                        .Where(tuple => tuple.CandidatesCount == 1)
+                        .Select(tuple => tuple.Index)
+                        .ToArray();
+
+                if (singleCandidateIndices.Length > 0)
+                {
+                    int pickSingleCandidateIndex = rng.Next(singleCandidateIndices.Length);
+                    int singleCandidateIndex = singleCandidateIndices[pickSingleCandidateIndex];
+                    int candidateMask = candidateMasks[singleCandidateIndex];
+                    int candidate = singleBitToIndex[candidateMask];
+
+                    int row = singleCandidateIndex/9;
+                    int col = singleCandidateIndex%9;
+
+                    int rowToWrite = row + row/3 + 1;
+                    int colToWrite = col + col/3 + 1;
+
+                    board[rowToWrite][colToWrite] = (char) ('1' + candidate);
+                    state[singleCandidateIndex] = candidate + 1;
+                    changeMade = true;
+
+                    Console.WriteLine();
+                    Console.WriteLine("({0}, {1}) can only contain {2}.",
+                                      row + 1, col + 1, candidate + 1);
+                    Console.WriteLine(string.Join("\n", board.Select(s => new string(s)).ToArray()));
+                }
+            }
         }
 
         static void Main(string[] args)
