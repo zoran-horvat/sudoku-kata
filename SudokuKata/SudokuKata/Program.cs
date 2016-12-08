@@ -49,7 +49,6 @@ namespace SudokuKata
             // - move - finds next candidate number at current pos and applies it to current state
             // - collapse - pops current state from stack as it did not yield a solution
             string command = "expand";
-
             while (stateStack.Count <= 9 * 9)
             {
                 if (command == "expand")
@@ -188,6 +187,45 @@ namespace SudokuKata
 
             Console.WriteLine();
             Console.WriteLine("Final look of the solved board:");
+            Console.WriteLine(string.Join("\n", board.Select(s => new string(s)).ToArray()));
+
+            // Board is solved at this point.
+            // Now pick subset of digits as the starting position.
+            int remainingDigits = 33;
+            int maxRemovedPerBlock = 6;
+            int[,] removedPerBlock = new int[3, 3];
+            int[] positions = Enumerable.Range(0, 9*9).ToArray();
+
+            int removedPos = 0;
+            while (removedPos < 9 * 9 - remainingDigits)
+            {
+                int curRemainingDigits = positions.Length - removedPos;
+                int indexToPick = removedPos + rng.Next(curRemainingDigits);
+
+                int row = positions[indexToPick] / 9;
+                int col = positions[indexToPick] % 9;
+
+                int blockRowToRemove = row/3;
+                int blockColToRemove = col/3;
+
+                if (removedPerBlock[blockRowToRemove, blockColToRemove] >= maxRemovedPerBlock)
+                    continue;
+
+                removedPerBlock[blockRowToRemove, blockColToRemove] += 1;
+
+                int temp = positions[removedPos];
+                positions[removedPos] = positions[indexToPick];
+                positions[indexToPick] = temp;
+
+                int rowToWrite = row + row/3 + 1;
+                int colToWrite = col + col/3 + 1;
+
+                board[rowToWrite][colToWrite] = '.';
+                removedPos += 1;
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("Starting look of the board to solve:");
             Console.WriteLine(string.Join("\n", board.Select(s => new string(s)).ToArray()));
         }
 
