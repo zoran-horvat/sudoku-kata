@@ -195,8 +195,8 @@ namespace SudokuKata
             #region Generate inital board from the completely solved one
             // Board is solved at this point.
             // Now pick subset of digits as the starting position.
-            int remainingDigits = 28;
-            int maxRemovedPerBlock = 7;
+            int remainingDigits = 30;
+            int maxRemovedPerBlock = 6;
             int[,] removedPerBlock = new int[3, 3];
             int[] positions = Enumerable.Range(0, 9 * 9).ToArray();
             int[] state = stateStack.Peek();
