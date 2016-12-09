@@ -8,6 +8,7 @@ namespace SudokuKata
     {
         static void Play()
         {
+            #region Construct fully populated board
             // Prepare empty board
             string line = "+---+---+---+";
             string middle = "|...|...|...|";
@@ -188,7 +189,9 @@ namespace SudokuKata
             Console.WriteLine();
             Console.WriteLine("Final look of the solved board:");
             Console.WriteLine(string.Join(Environment.NewLine, board.Select(s => new string(s)).ToArray()));
+#endregion
 
+            #region Generate inital board from the completely solved one
             // Board is solved at this point.
             // Now pick subset of digits as the starting position.
             int remainingDigits = 30;
@@ -235,7 +238,9 @@ namespace SudokuKata
             Console.WriteLine();
             Console.WriteLine("Starting look of the board to solve:");
             Console.WriteLine(string.Join("\n", board.Select(s => new string(s)).ToArray()));
+            #endregion
 
+            #region Prepare lookup structures that will be used in further execution
             Console.WriteLine();
             Console.WriteLine(new string('=', 80));
             Console.WriteLine();
@@ -254,9 +259,9 @@ namespace SudokuKata
                 singleBitToIndex[1 << i] = i;
 
             int allOnes = (1 << 9) - 1;
+            #endregion
 
             bool changeMade = true;
-
             while (changeMade)
             {
                 changeMade = false;
@@ -291,141 +296,283 @@ namespace SudokuKata
                     }
                 #endregion
 
-                #region Pick cells with only one candidate left
-                int[] singleCandidateIndices =
-                    candidateMasks
-                        .Select((mask, index) => new
-                        {
-                            CandidatesCount = maskToOnesCount[mask],
-                            Index = index
-                        })
-                        .Where(tuple => tuple.CandidatesCount == 1)
-                        .Select(tuple => tuple.Index)
-                        .ToArray();
+                #region Build a collection (named cellGroups) which maps cell indices into distinct groups (rows/columns/blocks)
+                var rowsIndices = state
+                    .Select((value, index) => new
+                    {
+                        Discriminator = index / 9,
+                        Description = $"row #{index / 9 + 1}",
+                        Index = index,
+                        Row = index / 9,
+                        Column = index % 9
+                    })
+                    .GroupBy(tuple => tuple.Discriminator);
 
-                if (singleCandidateIndices.Length > 0)
-                {
-                    int pickSingleCandidateIndex = rng.Next(singleCandidateIndices.Length);
-                    int singleCandidateIndex = singleCandidateIndices[pickSingleCandidateIndex];
-                    int candidateMask = candidateMasks[singleCandidateIndex];
-                    int candidate = singleBitToIndex[candidateMask];
+                var columnIndices = state
+                    .Select((value, index) => new
+                    {
+                        Discriminator = 9 + index % 9,
+                        Description = $"column #{index % 9 + 1}",
+                        Index = index,
+                        Row = index / 9,
+                        Column = index % 9
+                    })
+                    .GroupBy(tuple => tuple.Discriminator);
 
-                    int row = singleCandidateIndex / 9;
-                    int col = singleCandidateIndex % 9;
+                var blockIndices = state
+                    .Select((value, index) => new
+                    {
+                        Row = index / 9,
+                        Column = index % 9,
+                        Index = index
+                    })
+                    .Select(tuple => new
+                    {
+                        Discriminator = 18 + 3 * (tuple.Row / 3) + tuple.Column / 3,
+                        Description = $"block ({tuple.Row / 3 + 1}, {tuple.Column / 3 + 1})",
+                        Index = tuple.Index,
+                        Row = tuple.Row,
+                        Column = tuple.Column
+                    })
+                    .GroupBy(tuple => tuple.Discriminator);
 
-                    int rowToWrite = row + row / 3 + 1;
-                    int colToWrite = col + col / 3 + 1;
-
-                    state[singleCandidateIndex] = candidate + 1;
-                    board[rowToWrite][colToWrite] = (char)('1' + candidate);
-                    candidateMasks[singleCandidateIndex] = 0;
-                    changeMade = true;
-
-                    Console.WriteLine("({0}, {1}) can only contain {2}.", row + 1, col + 1, candidate + 1);
-                }
+                var cellGroups = rowsIndices.Concat(columnIndices).Concat(blockIndices).ToList();
                 #endregion
 
-                #region Try to find a number which can only appear in one place in a row/column/block
-                if (!changeMade)
+                bool stepChangeMade = true;
+                while (stepChangeMade)
                 {
-                    List<string> groupDescriptions = new List<string>();
-                    List<int> candidateRowIndices = new List<int>();
-                    List<int> candidateColIndices = new List<int>();
-                    List<int> candidates = new List<int>();
+                    stepChangeMade = false;
 
-                    for (int digit = 1; digit <= 9; digit++)
+                    #region Pick cells with only one candidate left
+
+                    int[] singleCandidateIndices =
+                        candidateMasks
+                            .Select((mask, index) => new
+                            {
+                                CandidatesCount = maskToOnesCount[mask],
+                                Index = index
+                            })
+                            .Where(tuple => tuple.CandidatesCount == 1)
+                            .Select(tuple => tuple.Index)
+                            .ToArray();
+
+                    if (singleCandidateIndices.Length > 0)
                     {
-                        int mask = 1 << (digit - 1);
-                        for (int cellGroup = 0; cellGroup < 9; cellGroup++)
-                        {
-                            int rowNumberCount = 0;
-                            int indexInRow = 0;
+                        int pickSingleCandidateIndex = rng.Next(singleCandidateIndices.Length);
+                        int singleCandidateIndex = singleCandidateIndices[pickSingleCandidateIndex];
+                        int candidateMask = candidateMasks[singleCandidateIndex];
+                        int candidate = singleBitToIndex[candidateMask];
 
-                            int colNumberCount = 0;
-                            int indexInCol = 0;
+                        int row = singleCandidateIndex / 9;
+                        int col = singleCandidateIndex % 9;
 
-                            int blockNumberCount = 0;
-                            int indexInBlock = 0;
-
-                            for (int indexInGroup = 0; indexInGroup < 9; indexInGroup++)
-                            {
-                                int rowStateIndex = 9 * cellGroup + indexInGroup;
-                                int colStateIndex = 9 * indexInGroup + cellGroup;
-                                int blockRowIndex = (cellGroup / 3) * 3 + indexInGroup / 3;
-                                int blockColIndex = (cellGroup % 3) * 3 + indexInGroup % 3;
-                                int blockStateIndex = blockRowIndex * 9 + blockColIndex;
-
-                                if ((candidateMasks[rowStateIndex] & mask) != 0)
-                                {
-                                    rowNumberCount += 1;
-                                    indexInRow = indexInGroup;
-                                }
-
-                                if ((candidateMasks[colStateIndex] & mask) != 0)
-                                {
-                                    colNumberCount += 1;
-                                    indexInCol = indexInGroup;
-                                }
-
-                                if ((candidateMasks[blockStateIndex] & mask) != 0)
-                                {
-                                    blockNumberCount += 1;
-                                    indexInBlock = indexInGroup;
-                                }
-                            }
-
-                            if (rowNumberCount == 1)
-                            {
-                                groupDescriptions.Add($"Row #{cellGroup + 1}");
-                                candidateRowIndices.Add(cellGroup);
-                                candidateColIndices.Add(indexInRow);
-                                candidates.Add(digit);
-                            }
-
-                            if (colNumberCount == 1)
-                            {
-                                groupDescriptions.Add($"Column #{cellGroup + 1}");
-                                candidateRowIndices.Add(indexInCol);
-                                candidateColIndices.Add(cellGroup);
-                                candidates.Add(digit);
-                            }
-
-                            if (blockNumberCount == 1)
-                            {
-                                int blockRow = cellGroup / 3;
-                                int blockCol = cellGroup % 3;
-
-                                groupDescriptions.Add($"Block ({blockRow + 1}, {blockCol + 1})");
-                                candidateRowIndices.Add(blockRow * 3 + indexInBlock / 3);
-                                candidateColIndices.Add(blockCol * 3 + indexInBlock % 3);
-                                candidates.Add(digit);
-                            }
-                        } // for (cellGroup = 0..8)
-                    } // for (digit = 1..9)
-
-                    if (candidates.Count > 0)
-                    {
-                        int index = rng.Next(candidates.Count);
-                        string description = groupDescriptions.ElementAt(index);
-                        int row = candidateRowIndices.ElementAt(index);
-                        int col = candidateColIndices.ElementAt(index);
-                        int digit = candidates.ElementAt(index);
                         int rowToWrite = row + row / 3 + 1;
                         int colToWrite = col + col / 3 + 1;
 
-                        string message = $"{description} can contain {digit} only at ({row + 1}, {col + 1}).";
-
-                        int stateIndex = 9 * row + col;
-                        state[stateIndex] = digit;
-                        candidateMasks[stateIndex] = 0;
-                        board[rowToWrite][colToWrite] = (char)('0' + digit);
-
+                        state[singleCandidateIndex] = candidate + 1;
+                        board[rowToWrite][colToWrite] = (char)('1' + candidate);
+                        candidateMasks[singleCandidateIndex] = 0;
                         changeMade = true;
 
-                        Console.WriteLine(message);
+                        Console.WriteLine("({0}, {1}) can only contain {2}.", row + 1, col + 1, candidate + 1);
                     }
+
+                    #endregion
+
+                    #region Try to find a number which can only appear in one place in a row/column/block
+
+                    if (!changeMade)
+                    {
+                        List<string> groupDescriptions = new List<string>();
+                        List<int> candidateRowIndices = new List<int>();
+                        List<int> candidateColIndices = new List<int>();
+                        List<int> candidates = new List<int>();
+
+                        for (int digit = 1; digit <= 9; digit++)
+                        {
+                            int mask = 1 << (digit - 1);
+                            for (int cellGroup = 0; cellGroup < 9; cellGroup++)
+                            {
+                                int rowNumberCount = 0;
+                                int indexInRow = 0;
+
+                                int colNumberCount = 0;
+                                int indexInCol = 0;
+
+                                int blockNumberCount = 0;
+                                int indexInBlock = 0;
+
+                                for (int indexInGroup = 0; indexInGroup < 9; indexInGroup++)
+                                {
+                                    int rowStateIndex = 9 * cellGroup + indexInGroup;
+                                    int colStateIndex = 9 * indexInGroup + cellGroup;
+                                    int blockRowIndex = (cellGroup / 3) * 3 + indexInGroup / 3;
+                                    int blockColIndex = (cellGroup % 3) * 3 + indexInGroup % 3;
+                                    int blockStateIndex = blockRowIndex * 9 + blockColIndex;
+
+                                    if ((candidateMasks[rowStateIndex] & mask) != 0)
+                                    {
+                                        rowNumberCount += 1;
+                                        indexInRow = indexInGroup;
+                                    }
+
+                                    if ((candidateMasks[colStateIndex] & mask) != 0)
+                                    {
+                                        colNumberCount += 1;
+                                        indexInCol = indexInGroup;
+                                    }
+
+                                    if ((candidateMasks[blockStateIndex] & mask) != 0)
+                                    {
+                                        blockNumberCount += 1;
+                                        indexInBlock = indexInGroup;
+                                    }
+                                }
+
+                                if (rowNumberCount == 1)
+                                {
+                                    groupDescriptions.Add($"Row #{cellGroup + 1}");
+                                    candidateRowIndices.Add(cellGroup);
+                                    candidateColIndices.Add(indexInRow);
+                                    candidates.Add(digit);
+                                }
+
+                                if (colNumberCount == 1)
+                                {
+                                    groupDescriptions.Add($"Column #{cellGroup + 1}");
+                                    candidateRowIndices.Add(indexInCol);
+                                    candidateColIndices.Add(cellGroup);
+                                    candidates.Add(digit);
+                                }
+
+                                if (blockNumberCount == 1)
+                                {
+                                    int blockRow = cellGroup / 3;
+                                    int blockCol = cellGroup % 3;
+
+                                    groupDescriptions.Add($"Block ({blockRow + 1}, {blockCol + 1})");
+                                    candidateRowIndices.Add(blockRow * 3 + indexInBlock / 3);
+                                    candidateColIndices.Add(blockCol * 3 + indexInBlock % 3);
+                                    candidates.Add(digit);
+                                }
+                            } // for (cellGroup = 0..8)
+                        } // for (digit = 1..9)
+
+                        if (candidates.Count > 0)
+                        {
+                            int index = rng.Next(candidates.Count);
+                            string description = groupDescriptions.ElementAt(index);
+                            int row = candidateRowIndices.ElementAt(index);
+                            int col = candidateColIndices.ElementAt(index);
+                            int digit = candidates.ElementAt(index);
+                            int rowToWrite = row + row / 3 + 1;
+                            int colToWrite = col + col / 3 + 1;
+
+                            string message = $"{description} can contain {digit} only at ({row + 1}, {col + 1}).";
+
+                            int stateIndex = 9 * row + col;
+                            state[stateIndex] = digit;
+                            candidateMasks[stateIndex] = 0;
+                            board[rowToWrite][colToWrite] = (char)('0' + digit);
+
+                            changeMade = true;
+
+                            Console.WriteLine(message);
+                        }
+                    }
+
+                    #endregion
+
+                    #region Try to find pairs of digits in the same row/column/block and remove them from other colliding cells
+                    if (!changeMade)
+                    {
+                        IEnumerable<int> twoDigitMasks =
+                            candidateMasks.Where(mask => maskToOnesCount[mask] == 2).Distinct().ToList();
+
+                        var groups =
+                            twoDigitMasks
+                                .SelectMany(mask =>
+                                    cellGroups
+                                        .Where(group => group.Count(tuple => candidateMasks[tuple.Index] == mask) == 2)
+                                        .Where(group => group.Any(tuple => candidateMasks[tuple.Index] != mask && (candidateMasks[tuple.Index] & mask) > 0))
+                                        .Select(group => new
+                                        {
+                                            Mask = mask,
+                                            Discriminator = group.Key,
+                                            Description = group.First().Description,
+                                            Cells = group
+                                        }))
+                                .ToList();
+
+                        if (groups.Any())
+                        {
+                            foreach (var group in groups)
+                            {
+                                var cells =
+                                    group.Cells
+                                        .Where(
+                                            cell =>
+                                                candidateMasks[cell.Index] != group.Mask &&
+                                                (candidateMasks[cell.Index] & group.Mask) > 0)
+                                        .ToList();
+
+                                var maskCells =
+                                    group.Cells
+                                        .Where(cell => candidateMasks[cell.Index] == group.Mask)
+                                        .ToArray();
+
+
+                                if (cells.Any())
+                                {
+                                    int upper = 0;
+                                    int lower = 0;
+                                    int temp = group.Mask;
+
+                                    int value = 1;
+                                    while (temp > 0)
+                                    {
+                                        if ((temp & 1) > 0)
+                                        {
+                                            lower = upper;
+                                            upper = value;
+                                        }
+                                        temp = temp >> 1;
+                                        value += 1;
+                                    }
+
+                                    Console.WriteLine(
+                                        $"Values {lower} and {upper} in {group.Description} are in cells ({maskCells[0].Row + 1}, {maskCells[0].Column + 1}) and ({maskCells[1].Row + 1}, {maskCells[1].Column + 1}).");
+
+                                    foreach (var cell in cells)
+                                    {
+                                        int maskToRemove = candidateMasks[cell.Index] & group.Mask;
+                                        List<int> valuesToRemove = new List<int>();
+                                        int curValue = 1;
+                                        while (maskToRemove > 0)
+                                        {
+                                            if ((maskToRemove & 1) > 0)
+                                            {
+                                                valuesToRemove.Add(curValue);
+                                            }
+                                            maskToRemove = maskToRemove >> 1;
+                                            curValue += 1;
+                                        }
+
+                                        string valuesReport = string.Join(", ", valuesToRemove.ToArray());
+                                        Console.WriteLine($"{valuesReport} cannot appear in ({cell.Row + 1}, {cell.Column + 1}).");
+
+                                        candidateMasks[cell.Index] &= ~group.Mask;
+                                        stepChangeMade = true;
+                                    }
+                                }
+                            }
+                        }
+
+                    }
+                    #endregion
+
                 }
-                #endregion
 
                 #region Final attempt - look if the board has multiple solutions
                 if (!changeMade)
@@ -726,8 +873,18 @@ namespace SudokuKata
 
                 if (changeMade)
                 {
+                    #region Print the board as it looks after one change was made to it
                     Console.WriteLine(string.Join(Environment.NewLine, board.Select(s => new string(s)).ToArray()));
+                    string code =
+                        string.Join(string.Empty, board.Select(s => new string(s)).ToArray())
+                            .Replace("-", string.Empty)
+                            .Replace("+", string.Empty)
+                            .Replace("|", string.Empty)
+                            .Replace(".", "0");
+
+                    Console.WriteLine("Code: {0}", code);
                     Console.WriteLine();
+                    #endregion
                 }
             }
         }
