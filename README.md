@@ -1,4 +1,4 @@
-# sudoku-kata
+# Sudoku Kata
 Coding practice demonstrating an awfully long method. Try to refactor this method.
 
 This entire exercise consists of one function (static method Play in the Program class). It has around 1,000 lines of code and it implements entire Sudoku game following these steps:
