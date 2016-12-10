@@ -2,6 +2,7 @@
 Coding practice demonstrating an awfully long method. Try to refactor this method.
 
 This entire exercise consists of one function (static method Play in the Program class). It has around 1,000 lines of code and it implements entire Sudoku game following these steps:
+
 1. Construct a fully solved Sudoku board - this step ensures that there is the solution
 2. Remove certain number of digits from the board - this step constructs initial board which is guaranteed to have at least one solution.
 3. Try to find a rule which concludes that one digit can be added to the board.
